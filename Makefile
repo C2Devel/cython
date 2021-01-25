@@ -1,20 +1,36 @@
 PYTHON?=python
 TESTOPTS?=
 REPO = git://github.com/cython/cython.git
-VERSION?=$(shell sed -ne 's|^__version__\s*=\s*"\([^"]*\)".*|\1|p' Cython/Shadow.py)
+PROGRAM?=cython
+PACKAGE?=${PYTHON}-$(PROGRAM)
+VERSION?=$(shell sed -n s/[[:space:]]*Version:[[:space:]]*//p $(PACKAGE).spec)
+
 
 MANYLINUX_IMAGE_X86_64=quay.io/pypa/manylinux1_x86_64
 MANYLINUX_IMAGE_686=quay.io/pypa/manylinux1_i686
 
 all:    local
 
+build:
+	$(PYTHON) setup.py build
+
 local:
 	${PYTHON} setup.py build_ext --inplace
 
-sdist: dist/Cython-$(VERSION).tar.gz
+install:
+	$(PYTHON) setup.py install --skip-build
 
-dist/Cython-$(VERSION).tar.gz:
+dist:
 	$(PYTHON) setup.py sdist
+
+sources: clean
+	@git archive --format=tar --prefix="$(PROGRAM)-$(VERSION)/" \
+		$(shell git rev-parse --verify HEAD) | gzip > "$(PROGRAM)-$(VERSION).tar.gz"
+
+srpm: sources
+	rpmbuild -bs --define "_sourcedir $(CURDIR)" \
+		--define "_srcrpmdir $(CURDIR)" $(PACKAGE).spec
+
 
 TMPDIR = .repo_tmp
 .git: .gitrev
@@ -30,7 +46,7 @@ repo: .git
 
 clean:
 	@echo Cleaning Source
-	@rm -fr build
+	@rm -rf build dist $(PROGRAM).egg-info $(PROGRAM)-*.tar.gz *.egg *.src.rpm
 	@rm -f *.py[co] */*.py[co] */*/*.py[co] */*/*/*.py[co]
 	@rm -f *.so */*.so */*/*.so
 	@rm -f *.pyd */*.pyd */*/*.pyd
@@ -67,3 +83,5 @@ wheel_manylinux32 wheel_manylinux64: dist/Cython-$(VERSION).tar.gz
 		    { $$PYBIN/pip wheel -w /io/$$WHEELHOUSE /io/$< & } ; \
 		    done; wait; \
 		    for whl in /io/$$WHEELHOUSE/Cython-$(VERSION)-*-linux_*.whl; do auditwheel repair $$whl -w /io/$$WHEELHOUSE; done'
+
+.PHONY: build install dist sources srpm clean
